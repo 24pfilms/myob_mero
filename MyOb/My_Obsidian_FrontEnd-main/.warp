@@ -1,0 +1,279 @@
+# My Obsidian - Warp Project Configuration
+
+## Project Overview
+My Obsidian is a modern, AI-powered markdown editor that provides full compatibility with Obsidian vaults while adding advanced features like drag-and-drop organization, YouTube video embedding, and semantic search.
+
+## Architecture
+- **Frontend**: React + TypeScript + Vite
+- **Backend**: FastAPI + Python
+- **Database**: SQLite with SQLAlchemy
+- **AI**: Google Gemini 2.5 Flash via OpenRouter for chat and semantic search
+
+## Key Features Implemented
+✅ YAML Frontmatter Support with dynamic title display
+✅ Drag & Drop file organization with folder creation
+✅ YouTube video auto-detection and embedding
+✅ AI-powered semantic search
+✅ Resizable sidebar and split-pane editing
+✅ Three view modes: Edit, Preview, Split (Ctrl+E to cycle)
+✅ **Synchronized Scrolling in Split View**
+✅ Lock/unlock scroll synchronization with button on resize handle
+✅ Bidirectional scroll syncing between editor and preview
+✅ **Obsidian-style Editor Width Slider**
+✅ Status bar with word/character count and width control
+✅ Independent width settings for Edit and Preview modes (40-100%)
+✅ Beautiful modern UI with gradients and animations
+✅ Word wrapping and proper scrolling
+✅ Dark/Light theme support
+✅ Import Hotspot (Ctrl+Shift+I) for quick URL import and bulk .txt files
+✅ YouTube graceful fallback: notes created even without transcripts
+✅ Context-aware toasts and badges for YouTube imports
+✅ **AI Assistant with Dual Query Modes**
+✅ Vault Context Mode: Semantic search across all notes with citations
+✅ General Query Mode: Direct AI chat for general knowledge questions
+✅ Multi-note querying like NotebookLM (automatic semantic matching)
+✅ Non-blocking UI: Continue editing while chatting with AI
+✅ Fast responses with Google Gemini 2.5 Flash (~3 seconds)
+✅ **Drag & Drop File Upload**
+✅ Drag images, JSON, code files, CSV, and markdown directly into editor
+✅ Automatic format conversion and insertion at cursor position
+✅ Support for 20+ programming languages with syntax highlighting
+✅ **NEW: Image Gallery & Management**
+✅ View all embedded images across notes in centralized gallery
+✅ Delete images in-editor with hover trash or keyboard shortcuts
+✅ Full-screen scrollable image viewer
+✅ Copy markdown from gallery for quick insertion
+✅ **NEW: Advanced UI Customization**
+✅ Accent color control with hue and brightness sliders
+✅ All toolbar icons dynamically use the accent color
+✅ Global text brightness control for entire app
+✅ Preview window background color customization (hue + brightness)
+✅ Font family and size controls for both editor and preview
+✅ Live font preview - see changes instantly in respective windows
+✅ 6 file sorting options (name, created, modified - asc/desc)
+✅ Folders collapsed by default for cleaner UI
+✅ Real-time updates for all settings with instant feedback
+✅ All settings persist across sessions via localStorage
+
+## Development Commands
+
+### Frontend
+```bash
+cd My_Obsidian_FrontEnd-main
+npm install
+npm run dev        # Development server
+npm run build      # Production build
+npm run preview    # Preview build
+```
+
+### Synchronized Scrolling (Split View)
+- **Lock Button** appears on the resize handle between editor and preview panes
+- **Click to toggle** scroll synchronization on/off
+- **Locked State**: Scrolling in either pane automatically scrolls the other proportionally
+- **Unlocked State**: Both panes scroll independently
+- **Visual Indicator**: Lock icon (black/white) vs Unlock icon (gray)
+- **Smooth Sync**: Maintains relative scroll position across both panes
+- **Default**: Locked by default for better UX in split view
+
+### Editor Width Slider
+- **Status bar** appears at bottom of editor/preview showing:
+  - Word count and character count (left)
+  - Width slider with percentage (right)
+- **Adjust width** from 40% to 100% in 5% increments
+- **Centered content** when width < 100% for focused reading/writing
+- **Separate settings** for Edit mode (`editorWidth`) and Preview mode (`previewWidth`)
+- **Persistent** settings saved to localStorage
+- **Smooth transitions** when adjusting width
+
+### Drag & Drop File Upload
+- **Drag files from desktop** directly into the markdown editor
+- **Supported file types**:
+  - **Images**: JPG, PNG, GIF, WEBP, BMP → Embedded as base64
+  - **JSON**: Formatted with syntax highlighting
+  - **Code**: Python, JavaScript, TypeScript, Java, Go, Rust, and 15+ more languages
+  - **CSV**: Automatically converted to markdown tables
+  - **Markdown**: Direct content insertion
+- **File size limit**: 10MB per file
+- **Visual feedback**: Drag overlay and upload progress indicator
+- **Multiple files**: Drop multiple files at once for batch upload
+- **Smart insertion**: Files inserted at current cursor position
+
+### Import Hotspot (URLs and Bulk)
+- Open via toolbar Import button or Ctrl+Shift+I
+- Drag & drop a .txt file containing URLs (one per line)
+- Paste a single URL (YouTube, GitHub, article, PDF) for quick import
+- Configure AI summary, tags, and target folder
+- See real-time progress for bulk imports
+
+### Backend
+```bash
+cd backend
+python runner.py                    # Start both API and file watcher
+python -m uvicorn app:app --reload  # API only with auto-reload
+python import_notes.py              # Import Obsidian notes
+python test_import.py               # Test import with sample
+```
+
+### AI Assistant
+- **Access**: Click AI Assist button (Sparkles icon) in toolbar
+- **Dual Modes**:
+  - **Vault Context Mode** (Toggle ON): Searches your notes with semantic similarity, returns answers with citations
+  - **General Query Mode** (Toggle OFF): Ask general questions without searching vault
+- **Features**:
+  - Automatic multi-note querying across entire vault
+  - Citations using [[Note Title]] format
+  - Conversation history (save/clear options)
+  - Configurable settings (model selection, temperature, context size)
+  - Non-dimming overlay - continue editing while chatting
+- **Models Available**:
+  - Google Gemini 2.5 Flash (Default - Fastest)
+  - Google Gemini 2.5 Pro
+  - GLM-4.6
+  - Claude 3.5 Sonnet
+  - GPT-4 Turbo/GPT-4
+  - Llama 3 70B
+
+### UI Customization (Settings → Appearance)
+- **Accent Color**:
+  - **Hue Slider**: Pick any color (0-360°) for UI elements
+  - **Brightness Slider**: Adjust accent brightness (10-80%, step 6)
+  - Affects all toolbar icons, buttons, links, and highlights
+  - Changes apply instantly and save automatically
+  
+- **Text Brightness**:
+  - **Luminance Slider**: Control text brightness globally (10-96%, step 6)
+  - Affects all text in app (toolbar, sidebar, editor) AND preview window
+  - Independent of theme - works in both light and dark modes
+  
+- **Background Color** (Preview Window):
+  - **Hue Slider**: Choose background color tint (0-360°)
+  - **Brightness Slider**: Adjust darkness (3-20%) for subtle tinting
+  - Only affects preview/reading pane background
+  - Works with existing texture and brightness settings
+  
+- **File Sorting**:
+  - Name (A-Z or Z-A)
+  - Created Date (Newest First or Oldest First)
+  - Modified Date (Newest First or Oldest First)
+  - Dropdown in sidebar with real-time sorting
+  
+- **Folder Behavior**:
+  - All folders start collapsed by default
+  - Click to expand/collapse individual folders
+  - State persists during session
+  
+- **Font Settings**:
+  - **Editor Font**: Family and size (12-20px)
+  - **Preview Font**: Family and size (14-22px)
+  - **Live Preview**: Changes apply instantly to the respective window
+  - **Font Options**: Montserrat, Inter, Georgia, Roboto, JetBrains Mono, Merriweather
+  - See exactly how text will look before saving
+
+## Configuration Files
+- `backend/config.py` - Vault path and API keys
+- `src/lib/api.ts` - Frontend API configuration
+- `vite.config.ts` - Build configuration
+- `tailwind.config.ts` - Styling configuration
+
+## Port Configuration
+- Frontend Dev Server: 5173, 8080, 8081, 8082 (auto-selects)
+- Backend API: 8000
+- API Documentation: 8000/docs
+
+## Git Workflow
+1. Feature branches from main
+2. Pull requests for code review
+3. Automatic builds on push
+4. Production deployments from main
+
+## Dependencies
+### Frontend
+- React 18.3.1
+- TypeScript 5.6
+- Vite 5.4
+- Tailwind CSS 3.4
+- CodeMirror 6
+- Shadcn/ui components
+
+### Backend  
+- FastAPI (latest)
+- SQLAlchemy 2.0
+- Python-frontmatter 1.1
+- YouTube Transcript API 1.2 + yt-dlp fallback
+- OpenRouter API for AI features (Google Gemini, Claude, GPT-4, etc.)
+
+## Environment Setup
+1. Node.js 16+ with npm
+2. Python 3.8+ with pip
+3. Git for version control
+4. **Required for AI**: OpenRouter API key in backend/.env as `OPENROUTER_API_KEY`
+
+## Folder Structure
+```
+My_Obsidian/
+├── My_Obsidian_FrontEnd-main/    # React app
+│   ├── src/components/AI/        # AI Assistant components
+│   │   ├── AIChatPanel.tsx       # Main chat interface
+│   │   ├── AISettingsDialog.tsx  # Settings management
+│   │   ├── ChatMessage.tsx       # Message display
+│   │   └── CitationCard.tsx      # Citation rendering
+│   ├── src/components/Editor/    # Editor components
+│   │   ├── EnhancedMarkdownEditor.tsx
+│   │   ├── MarkdownPreview.tsx
+│   │   ├── EditorWidthSlider.tsx
+│   │   ├── ScrollLockHandle.tsx
+│   │   ├── FileBrowser.tsx
+│   │   ├── ImagesGallery.tsx     # Image gallery and management
+│   │   └── EditorToolbar.tsx
+│   ├── src/lib/                  # Utilities and API
+│   └── src/pages/                # Main application
+└── backend/                      # FastAPI server
+    ├── app.py                    # Main API with AI and file upload endpoints
+    ├── database.py               # Models (including AI tables)
+    ├── ai.py                     # Embeddings and chat
+    ├── ai_service.py             # AI Assistant service layer
+    ├── file_processor.py         # File upload processing
+    └── import_notes.py           # Import script
+```
+
+## Performance Notes
+- Frontend bundle: ~1.3MB (compressed: ~427KB)
+- Backend startup: <2 seconds
+- Note import speed: ~1.1 seconds per note (due to embedding generation)
+- Search response time: <100ms for most queries
+- **AI Assistant**: ~3 seconds for general queries, ~5-8 seconds for vault context mode (includes semantic search)
+
+## Browser Support
+- Chrome/Edge 100+
+- Firefox 100+
+- Safari 15+
+- Mobile browsers supported
+
+## Known Issues
+- Large vaults (1000+ notes) may take time to import initially
+- YouTube embeds require internet connectivity
+- AI features require OpenRouter API key (set in backend/.env)
+- YouTube transcripts may be unavailable due to rate limits or video restrictions; notes will still be created with guidance
+- Semantic search can be slow on first query as embeddings are generated
+
+## Deployment Notes
+- Frontend: Static files, can deploy to Vercel, Netlify, etc.
+- Backend: FastAPI server, can deploy to Heroku, Railway, etc.
+- Database: SQLite file, consider PostgreSQL for production
+- File watcher: Optional for production, mainly for development
+
+## Security Considerations
+- API keys stored in environment variables
+- CORS configured for development
+- Input validation on all endpoints
+- SQL injection protection via SQLAlchemy
+- File system access limited to configured vault path
+
+## Performance Optimizations
+- React Suspense for code splitting
+- Vite for fast builds and HMR
+- SQLite indexes on frequently queried fields
+- Debounced search to reduce API calls
+- Lazy loading for large file trees
+
+This project represents a successful integration of modern web technologies with traditional note-taking workflows, providing a powerful and intuitive interface for knowledge management.

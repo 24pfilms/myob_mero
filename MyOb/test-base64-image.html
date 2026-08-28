@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Base64 Image Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0052a3;
+        }
+        #result {
+            margin-top: 20px;
+        }
+        .generated-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin: 1rem 0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: block;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background: #e3f2fd;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 MyOb AI Image Generation Test</h1>
+    <p>Click the button below to generate an AI image using Gemini 2.5 Flash</p>
+    
+    <button onclick="generateImage()">Generate Nano Banana Image</button>
+    
+    <div id="result"></div>
+
+    <script>
+        async function generateImage() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="status">⏳ Generating image... (this may take 5-10 seconds)</div>';
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/ai/generate-image', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        prompt: 'A cute nano banana wearing sunglasses in a fancy restaurant',
+                        aspect_ratio: '1:1'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // Create the data URL
+                const dataUrl = `data:${data.mime_type};base64,${data.image_data}`;
+                
+                // Display the image
+                resultDiv.innerHTML = `
+                    <div class="status">✅ Image generated successfully!</div>
+                    <p><strong>Image ID:</strong> ${data.image_id}</p>
+                    <p><strong>Prompt:</strong> ${data.prompt}</p>
+                    <p><strong>Aspect Ratio:</strong> ${data.aspect_ratio}</p>
+                    <img src="${dataUrl}" alt="${data.prompt}" class="generated-image" />
+                    <p><strong>Markdown for note:</strong></p>
+                    <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto;">![${data.prompt}](${dataUrl})</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+                console.error('Error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+# Dependencies and build output
+**/node_modules/
+**/dist/
+**/build/
+**/.venv/
+**/venv/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Runtime data and uploads
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+**/uploads/
+**/attachments/
+**/backups/
+**/data/models/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.local
+
+# Logs, coverage, and generated verification artifacts
+*.log
+coverage/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.gg/screenshots/
+playwright-report/
+test-results/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { mkdir } from 'node:fs/promises';
+
+const baseUrl = process.env.E2E_URL || 'http://127.0.0.1:3201';
+const output = process.env.E2E_SCREENSHOTS || '../.gg/screenshots';
+await mkdir(output, { recursive: true });
+const browser = await chromium.launch({ headless: true });
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+  await page.goto(baseUrl);
+  await page.locator('#username').waitFor();
+  await page.screenshot({ path: `${output}/auth-desktop.png`, fullPage: true });
+  await page.locator('#username').fill('e2e-user');
+  await page.locator('#password').fill('e2e-password-123');
+  await page.getByRole('button', { name: 'Sign In' }).click();
+  await page.getByRole('button', { name: 'Notes' }).waitFor();
+  await page.screenshot({ path: `${output}/canvas-desktop.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Notes' }).click();
+  await page.getByRole('list').getByText('Orca navigation', { exact: false }).waitFor();
+  await page.screenshot({ path: `${output}/finder-desktop.png`, fullPage: true });
+  await page.getByRole('list').getByText('Orca navigation', { exact: false }).dblclick();
+  await page.getByRole('heading', { name: 'Edit note' }).waitFor();
+  await page.screenshot({ path: `${output}/editor-desktop.png`, fullPage: true });
+  await page.getByLabel('Title').fill('Orca navigation edited');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByText('Up to date').waitFor();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Notes' }).click();
+  await page.getByRole('listitem').filter({ hasText: 'Orca navigation edited' }).getByRole('button', { name: 'Place' }).click();
+  await page.getByRole('listitem').filter({ hasText: 'Whale navigation' }).getByRole('button', { name: 'Place' }).click();
+  const cards = page.locator('[aria-label$="Note ready"]');
+  const placedCount = await cards.count();
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(100);
+  assert.equal(await cards.count(), placedCount - 1);
+  await page.keyboard.press('Control+y');
+  await page.waitForTimeout(100);
+  assert.equal(await cards.count(), placedCount);
+  await page.getByRole('button', { name: 'Close notes' }).click();
+  await page.getByRole('button', { name: 'connectors' }).click();
+  await page.getByText('Fainter = weaker').waitFor();
+  await page.getByText('Updating relationships...').waitFor({ state: 'hidden' });
+  await page.screenshot({ path: `${output}/relationships-desktop.png`, fullPage: true });
+  await page.getByRole('button', { name: 'AI Assistant' }).click();
+  await page.getByText('AI unavailable until OpenAI is connected.').waitFor();
+  await page.screenshot({ path: `${output}/ai-unavailable-desktop.png`, fullPage: true });
+
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+  await mobile.goto(baseUrl);
+  await mobile.locator('#username').fill('e2e-user');
+  await mobile.locator('#password').fill('e2e-password-123');
+  await mobile.getByRole('button', { name: 'Sign In' }).click();
+  await mobile.getByRole('button', { name: 'Notes' }).waitFor();
+  await mobile.getByRole('button', { name: 'Notes' }).click();
+  await mobile.getByRole('list').getByText('Orca navigation edited', { exact: false }).waitFor();
+  await mobile.screenshot({ path: `${output}/finder-mobile.png`, fullPage: true });
+  console.log('UI_E2E_OK');
+} finally {
+  await browser.close();
+}

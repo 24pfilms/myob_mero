@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infinite Canvas Board</title>
+    <link rel="stylesheet" href="/index.css">
+  </head>
+  <body class="overflow-hidden bg-gray-900">
+    <div id="root"></div>
+    <script>
+      // Prevent browser zoom (Ctrl+Wheel and keyboard shortcuts)
+      document.addEventListener('wheel', function(e) {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+      
+      document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=')) {
+          e.preventDefault();
+        }
+      });
+    </script>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
