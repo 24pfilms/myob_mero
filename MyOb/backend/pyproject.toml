@@ -12,7 +12,7 @@ dependencies = [
   "youtube-transcript-api==0.6.1",
   "newspaper3k==0.2.8",
   "PyPDF2==3.0.1",
-  "beautifulsoup4==4.12.2",
+  "beautifulsoup4==4.15.0",
   "python-dateutil==2.8.2",
   "lxml>=5.0.0",
   "lxml_html_clean==0.1.1",
