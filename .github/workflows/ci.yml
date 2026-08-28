@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Majors verified against the official action documentation on 2026-08-28.
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            Mero/package-lock.json
+            Mero/server/package-lock.json
+            MyOb/My_Obsidian_FrontEnd-main/package-lock.json
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: MyOb/backend/uv.lock
+
+      - name: Install Node dependencies
+        run: |
+          npm ci --prefix Mero
+          npm ci --prefix Mero/server
+          npm ci --prefix MyOb/My_Obsidian_FrontEnd-main
+
+      - name: Install Python dependencies
+        run: uv sync --project MyOb/backend --locked
+
+      - name: Test Mero server
+        run: npm test --prefix Mero/server
+
+      - name: Test relationship geometry
+        run: npm run test:geometry --prefix Mero
+
+      - name: Test MyOb backend
+        working-directory: MyOb/backend
+        run: uv run python -m unittest test_attachment_migration.py test_codex_provider.py test_data_safety.py test_database_runtime.py test_local_embeddings.py test_migrations.py test_note_versions.py test_openai_provider.py test_route_order.py test_security.py test_semantic_endpoints.py test_tenant_isolation.py
+
+      - name: Test MyOb diagnostic frontend
+        run: npm test --prefix MyOb/My_Obsidian_FrontEnd-main
+
+      - name: Build Mero
+        run: npm run build --prefix Mero
+
+      - name: Build MyOb diagnostic frontend
+        run: npm run build --prefix MyOb/My_Obsidian_FrontEnd-main
