@@ -39,6 +39,14 @@ class RouteOrderTests(unittest.TestCase):
         self.assertEqual(matched_endpoint("/api/projects/project-1/unlinked"), "project_unlinked_entries")
         self.assertEqual(matched_endpoint("/api/clients"), "list_clients")
         self.assertEqual(matched_endpoint("/api/exports/job-1"), "get_export")
+        self.assertEqual(matched_endpoint("/api/note-groups"), "list_note_groups")
+        self.assertEqual(matched_endpoint("/api/note-groups/group-1", "PUT"), "update_note_group")
+        self.assertEqual(matched_endpoint("/api/note-groups/group-1", "DELETE"), "delete_note_group")
+        self.assertEqual(matched_endpoint("/api/personas"), "list_personas")
+        self.assertEqual(matched_endpoint("/api/personas/persona-1", "PUT"), "update_persona")
+        self.assertEqual(matched_endpoint("/api/personas/persona-1", "DELETE"), "delete_persona")
+        # The bulk route must win over the note path catch-all.
+        self.assertEqual(matched_endpoint("/api/notes/bulk", "POST"), "bulk_update_notes")
         self.assertEqual(matched_endpoint("/api/folders/nested/path"), "get_folder")
 
     def test_note_get_catch_all_remains_after_every_declared_nested_note_get(self):

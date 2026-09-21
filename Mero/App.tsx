@@ -17,6 +17,7 @@ import { LoginModal } from './components/LoginModal';
 import { BackgroundTest } from './components/BackgroundTest';
 import { NoteFinderDrawer } from './components/NoteFinderDrawer';
 import { JournalPanel } from './components/JournalPanel';
+import { JournalSearchPanel } from './components/JournalSearchPanel';
 import { RelatedNotesPanel } from './components/RelatedNotesPanel';
 import { useBoard } from './hooks/useBoard';
 import { useDatabase } from './hooks/useDatabase';
@@ -146,6 +147,7 @@ function App() {
   const [isObsidianVaultOpen, setIsObsidianVaultOpen] = useState(false);
   const [isNoteFinderOpen, setIsNoteFinderOpen] = useState(false);
   const [isJournalOpen, setIsJournalOpen] = useState(false);
+  const [isJournalSearchOpen, setIsJournalSearchOpen] = useState(false);
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [isBoardManagerOpen, setIsBoardManagerOpen] = useState(false);
   const [aiImageEditItem, setAiImageEditItem] = useState<any>(null);
@@ -657,6 +659,7 @@ function App() {
         onOpenYouTubeModal={() => setIsYouTubeModalOpen(true)}
         onOpenNotes={() => setIsNoteFinderOpen(true)}
         onOpenJournal={() => setIsJournalOpen(true)}
+        onOpenJournalSearch={() => setIsJournalSearchOpen(true)}
         onOpenObsidianVault={() => setIsObsidianVaultOpen(true)}
         onOpenBoardManager={() => setIsBoardManagerOpen(true)}
         onBackgroundColorChange={setCanvasBackgroundColor}
@@ -773,7 +776,13 @@ function App() {
           onOpen={note => { setActiveNoteId(note.id); setIsJournalOpen(false); }}
         />
       )}
-      {selectedNote && !isNoteFinderOpen && !isJournalOpen && <RelatedNotesPanel noteId={selectedNote.noteId} onPlace={placeRelatedNote} />}
+      {isJournalSearchOpen && (
+        <JournalSearchPanel
+          onClose={() => setIsJournalSearchOpen(false)}
+          onOpen={note => { setActiveNoteId(note.id); setIsJournalSearchOpen(false); }}
+        />
+      )}
+      {selectedNote && !isNoteFinderOpen && !isJournalOpen && !isJournalSearchOpen && <RelatedNotesPanel noteId={selectedNote.noteId} onPlace={placeRelatedNote} />}
       {contextMenu && (
         <ContextMenu
           data={contextMenu}

@@ -60,6 +60,36 @@ test('route allowlist excludes host filesystem and arbitrary upstream paths', ()
   assert.equal(allowed('GET', '//example.com/steal'), false);
 });
 
+test('search and scope routes are allowed only in their exact shapes', () => {
+  for (const [method, route] of [
+    ['POST', '/notes/bulk'],
+    ['GET', '/note-groups'],
+    ['POST', '/note-groups'],
+    ['PUT', '/note-groups/group-1'],
+    ['DELETE', '/note-groups/group-1'],
+    ['GET', '/personas'],
+    ['POST', '/personas'],
+    ['PUT', '/personas/persona-1'],
+    ['DELETE', '/personas/persona-1'],
+    ['GET', '/semantic-search'],
+  ]) {
+    assert.equal(allowed(method, route), true, `${method} ${route} should be allowed`);
+  }
+
+  for (const [method, route] of [
+    ['GET', '/note-groups/group-1'],
+    ['POST', '/note-groups/group-1'],
+    ['DELETE', '/note-groups'],
+    ['PUT', '/personas'],
+    ['DELETE', '/personas'],
+    ['PUT', '/personas/a/b'],
+    ['POST', '/semantic-search'],
+    ['GET', '/note-groups/../personas'],
+  ]) {
+    assert.equal(allowed(method, route), false, `${method} ${route} should be refused`);
+  }
+});
+
 test('journal routes are allowed only in their exact shapes', () => {
   for (const [method, route] of [
     ['GET', '/entries'],

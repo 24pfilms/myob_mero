@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ItemType, ShapeType, BoardItem } from '../types';
-import { StickyNoteIcon, SquareIcon, TextIcon, FrameIcon, ZoomInIcon, ZoomOutIcon, FitToScreenIcon, TrashIcon, ExportIcon, ShapesIcon, RoundedRectangleIcon, CircleIcon, TriangleIcon, DiamondIcon, HexagonIcon, BotIcon, PaletteIcon, GridIcon, MousePointerIcon, LineIcon, ArrowRightIcon, ArrowLeftIcon, ArrowUpIcon, ArrowDownIcon, ArrowBothIcon, LayoutHorizontalIcon, LayoutVerticalIcon, YouTubeIcon, FolderOpen, JournalIcon, MoveIcon, BoardIcon, MicrophoneIcon, PenToolIcon, EraserIcon } from './icons';
+import { StickyNoteIcon, SquareIcon, TextIcon, FrameIcon, ZoomInIcon, ZoomOutIcon, FitToScreenIcon, TrashIcon, ExportIcon, ShapesIcon, RoundedRectangleIcon, CircleIcon, TriangleIcon, DiamondIcon, HexagonIcon, BotIcon, PaletteIcon, GridIcon, MousePointerIcon, LineIcon, ArrowRightIcon, ArrowLeftIcon, ArrowUpIcon, ArrowDownIcon, ArrowBothIcon, LayoutHorizontalIcon, LayoutVerticalIcon, YouTubeIcon, FolderOpen, JournalIcon, SearchIcon, MoveIcon, BoardIcon, MicrophoneIcon, PenToolIcon, EraserIcon } from './icons';
 import { DrawingTool } from '../types';
 
 interface PendingTool {
@@ -23,6 +23,7 @@ interface ToolbarProps {
   onOpenYouTubeModal: () => void;
   onOpenNotes: () => void;
   onOpenJournal: () => void;
+  onOpenJournalSearch: () => void;
   onOpenObsidianVault: () => void;
   onOpenBoardManager: () => void;
   onBackgroundColorChange: (color: string) => void;
@@ -90,7 +91,7 @@ const ShapeMenuItem = ({ children, onClick, tooltip }: { children: React.ReactNo
     </div>
 );
 
-export const Toolbar: React.FC<ToolbarProps> = ({ onAddItem, selectedTool, onZoomIn, onZoomOut, onFitToScreen, onClearBoard, onExport, onOpenAiAssistant, onOpenYouTubeModal, onOpenNotes, onOpenJournal, onOpenObsidianVault, onOpenBoardManager, onBackgroundColorChange, dotDensity, onDotDensityChange, toolbarPosition, onToolbarPositionChange, voiceCommandsActive = false, voiceCommandsSupported = true, onToggleVoiceCommands, exportResolution = '2K', onExportResolutionChange, drawingTool = null, onDrawingToolChange }) => {
+export const Toolbar: React.FC<ToolbarProps> = ({ onAddItem, selectedTool, onZoomIn, onZoomOut, onFitToScreen, onClearBoard, onExport, onOpenAiAssistant, onOpenYouTubeModal, onOpenNotes, onOpenJournal, onOpenJournalSearch, onOpenObsidianVault, onOpenBoardManager, onBackgroundColorChange, dotDensity, onDotDensityChange, toolbarPosition, onToolbarPositionChange, voiceCommandsActive = false, voiceCommandsSupported = true, onToggleVoiceCommands, exportResolution = '2K', onExportResolutionChange, drawingTool = null, onDrawingToolChange }) => {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
   const [isDensityMenuOpen, setIsDensityMenuOpen] = useState(false);
@@ -392,6 +393,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onAddItem, selectedTool, onZoo
 
         <ToolButton onClick={onOpenJournal} tooltip="Journal">
             <JournalIcon />
+        </ToolButton>
+
+        <ToolButton onClick={onOpenJournalSearch} tooltip="Search journal">
+            <SearchIcon />
         </ToolButton>
 
         {/* Hidden for now

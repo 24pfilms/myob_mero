@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from datetime import datetime
 
-from database import AISettings, Base, Client, Job, Note, Project, TenantSession
+from database import AISettings, Base, Client, Job, Note, NoteGroup, Persona, Project, TenantSession
 
 OWNER_A = "123e4567-e89b-42d3-a456-426614174000"
 OWNER_B = "123e4567-e89b-42d3-a456-426614174001"
@@ -49,15 +49,19 @@ class TenantIsolationTests(unittest.TestCase):
             first.add(Project(id="project-1", name="Redesign", client_id="client-1", created_at=datetime.utcnow()))
             first.add(Note(id="entry-1", title="Monday", content="work", tags=[], kind="entry", space="work"))
             first.add(Job(id="job-1", type="export", created_at=datetime.utcnow(), updated_at=datetime.utcnow()))
+            first.add(NoteGroup(id="group-1", name="Mine", mode="fixed", definition={"note_ids": ["entry-1"]}, created_at=datetime.utcnow()))
+            first.add(Persona(id="persona-1", name="Mine", instructions="Rules.", created_at=datetime.utcnow()))
             first.commit()
 
             self.assertEqual(second.query(Client).count(), 0)
             self.assertEqual(second.query(Project).count(), 0)
             self.assertEqual(second.query(Note).filter(Note.kind == "entry").count(), 0)
             self.assertEqual(second.query(Job).count(), 0)
+            self.assertEqual(second.query(NoteGroup).count(), 0)
+            self.assertEqual(second.query(Persona).count(), 0)
             self.assertEqual(first.query(Job).one().owner_id, OWNER_A)
         finally:
-            for model in (Client, Project, Job):
+            for model in (Client, Project, Job, NoteGroup, Persona):
                 first.query(model).delete()
             first.query(Note).filter(Note.kind == "entry").delete()
             first.commit()

@@ -20,14 +20,14 @@ class MigrationTests(unittest.TestCase):
             owner = "123e4567-e89b-42d3-a456-426614174000"
             with self.assertRaisesRegex(RuntimeError, "--legacy-owner"):
                 apply_migrations(database_path)
-            self.assertEqual(apply_migrations(database_path, legacy_owner=owner), [2, 3, 4, 5, 6])
+            self.assertEqual(apply_migrations(database_path, legacy_owner=owner), [2, 3, 4, 5, 6, 7])
             self.assertEqual(apply_migrations(database_path), [])
 
             connection = sqlite3.connect(database_path)
             try:
                 self.assertEqual(connection.execute("SELECT owner_id, title, content, embedding_status FROM notes WHERE id = 'legacy-note'").fetchone(), (owner, "Legacy note", "# Preserved", "missing"))
                 self.assertEqual(connection.execute("SELECT owner_id, name FROM folders WHERE id = 'legacy-folder'").fetchone(), (owner, "Legacy"))
-                self.assertEqual(connection.execute("SELECT version, name FROM schema_migrations").fetchall(), [(1, "001_initial.sql"), (2, "002_tenant_ownership.sql"), (3, "003_local_embeddings.sql"), (4, "004_note_versions.sql"), (5, "005_attachments.sql"), (6, "006_journal_entries.sql")])
+                self.assertEqual(connection.execute("SELECT version, name FROM schema_migrations").fetchall(), [(1, "001_initial.sql"), (2, "002_tenant_ownership.sql"), (3, "003_local_embeddings.sql"), (4, "004_note_versions.sql"), (5, "005_attachments.sql"), (6, "006_journal_entries.sql"), (7, "007_search_scopes.sql")])
                 self.assertEqual(connection.execute("PRAGMA journal_mode").fetchone()[0], "wal")
                 self.assertEqual(connection.execute("PRAGMA busy_timeout").fetchone()[0], 5_000)
                 connection.execute("PRAGMA foreign_keys = ON")

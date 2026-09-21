@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
-from typing import Optional, List, Literal
+from typing import Annotated, Optional, List, Literal
 import json
 import os
 import frontmatter
@@ -14,8 +14,9 @@ import threading
 import re
 
 # Local imports
-from database import get_db, Note, NoteVersion, Attachment, VideoSummary, Folder, ImportJob, AISettings, EmbeddingJob, GeneratedImage, ImageCollection, ImageCollectionMembership, Client, Project, Job
+from database import get_db, Note, NoteVersion, Attachment, VideoSummary, Folder, ImportJob, AISettings, EmbeddingJob, GeneratedImage, ImageCollection, ImageCollectionMembership, Client, Project, Job, NoteGroup, Persona
 from journal import body_word_count, name_hints
+from search_filters import apply_filters, filter_options, find_date_phrase, keyword_matches, match_locations
 from ai import get_embedding, cosine_similarity
 from local_embeddings import MODEL_DIMENSIONS, MODEL_NAME
 from youtube import find_youtube_videos, process_video
@@ -23,6 +24,30 @@ from config import VAULT_PATH, ATTACHMENTS_PATH
 from file_processor import process_file
 from attachment_migration import MAX_ATTACHMENT_BYTES, store_attachment
 from security import MeroTrustBoundaryMiddleware, get_request_context, run_with_request_context
+
+MAX_SCOPE_NOTES = 200
+BLEND_KEYWORD = 0.4
+BLEND_SIMILARITY = 0.6
+
+
+def session_owner_id(db: Session) -> str:
+    """Owner for raw SQL, taken from the session the ORM guard already scopes by.
+
+    Reading it from one place keeps raw FTS queries and ORM queries on the same tenant.
+    """
+    owner_id = db.info.get("owner_id")
+    if not owner_id:
+        raise RuntimeError("Tenant owner is required for MyOb data access")
+    return owner_id
+
+
+def project_lookup(db: Session) -> dict:
+    """project_id -> name and client, for facet labels."""
+    clients = {client.id: client.name for client in db.query(Client).all()}
+    return {
+        project.id: {"name": project.name, "client_id": project.client_id, "client_name": clients.get(project.client_id)}
+        for project in db.query(Project).all()
+    }
 
 app = FastAPI()
 
@@ -130,33 +155,126 @@ def get_notes(q: Optional[str] = None, folder_id: Optional[str] = None, tag: Opt
     } for note in notes]
 
 
+def resolve_scope(db: Session, scope: Optional[dict]) -> Optional[List[str]]:
+    """Turn a scope into an explicit note id list, or None for the whole vault.
+
+    Citations can only point inside this list, so it is the privacy boundary for F9.
+    """
+    if not scope:
+        return None
+    if scope.get("group_id"):
+        group = db.query(NoteGroup).filter(NoteGroup.id == scope["group_id"]).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        definition = group.definition or {}
+        scope = {**definition, "group_id": None} if group.mode == "live" else {"note_ids": definition.get("note_ids", [])}
+
+    if scope.get("note_ids") is not None:
+        ids = [str(note_id) for note_id in scope["note_ids"]][:MAX_SCOPE_NOTES]
+        found = db.query(Note.id).filter(Note.id.in_(ids or [""])).all()
+        return [row[0] for row in found]
+
+    query = db.query(Note)
+    matched = False
+    for key in ("folder_id", "project_id", "client_id", "space", "kind"):
+        if scope.get(key):
+            matched = True
+    if scope.get("folder_id"):
+        query = query.filter(Note.folder_id == scope["folder_id"])
+    if scope.get("project_id"):
+        query = query.filter(Note.project_id == scope["project_id"])
+    if scope.get("client_id"):
+        query = query.join(Project, (Project.id == Note.project_id) & (Project.owner_id == Note.owner_id)).filter(
+            Project.client_id == scope["client_id"])
+    if scope.get("space"):
+        query = query.filter(Note.space == scope["space"])
+    if scope.get("kind"):
+        query = query.filter(Note.kind == scope["kind"])
+
+    notes = query.all()
+    tags = [tag for tag in (scope.get("tags") or []) if tag]
+    if tags:
+        matched = True
+        notes = [note for note in notes if set(tags) & set(note.tags or [])]
+    if not matched:
+        return None
+    return [note.id for note in notes][:MAX_SCOPE_NOTES]
+
+
 @app.get("/api/semantic-search")
-def semantic_search(q: str, limit: int = 20, db: Session = Depends(get_db)):
-    """Search notes by meaning using one validated local embedding space."""
+def semantic_search(
+    q: str,
+    limit: int = 20,
+    mode: Literal["ai", "text"] = "ai",
+    from_date: Annotated[Optional[date], Query(alias="from")] = None,
+    to_date: Annotated[Optional[date], Query(alias="to")] = None,
+    space: Optional[Literal["work", "personal"]] = None,
+    kind: Optional[Literal["note", "entry", "summary"]] = None,
+    project_id: Optional[str] = None,
+    client_id: Optional[str] = None,
+    group_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Search notes by meaning or exact words, filtered in SQL before anything is scored."""
     if not q.strip() or not 1 <= limit <= 100:
         raise HTTPException(status_code=400, detail="Query is required and limit must be between 1 and 100")
-    from local_embeddings import get_local_embedding_provider
-    query_embedding = get_local_embedding_provider().embed_query(q)
-    notes = db.query(Note).filter(
-        Note.embedding_status == "ready",
-        Note.embedding_model == MODEL_NAME,
-        Note.embedding_dimensions == MODEL_DIMENSIONS,
-    ).all()
+
+    scope_ids = resolve_scope(db, {"group_id": group_id} if group_id else None)
+    filters = {
+        "from_date": from_date, "to_date": to_date, "space": space, "kind": kind,
+        "project_id": project_id, "client_id": client_id, "note_ids": scope_ids,
+    }
+
+    candidates = apply_filters(db.query(Note), filters).all()
+    projects_by_id = project_lookup(db)
+
+    keyword_scores = keyword_matches(db, session_owner_id(db), q)
+    similarity_scores = {}
+    if mode == "ai":
+        from local_embeddings import get_local_embedding_provider
+        query_embedding = get_local_embedding_provider().embed_query(q)
+        for note in candidates:
+            if note.embedding_status != "ready" or note.embedding_model != MODEL_NAME or note.embedding_dimensions != MODEL_DIMENSIONS:
+                continue
+            try:
+                note_embedding = json.loads(note.embedding)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if len(note_embedding) != MODEL_DIMENSIONS:
+                continue
+            score = cosine_similarity(query_embedding, note_embedding)
+            if score > 0.3:
+                similarity_scores[note.id] = score
 
     results = []
-    for note in notes:
-        try:
-            note_embedding = json.loads(note.embedding)
-        except (TypeError, json.JSONDecodeError):
-            continue
-        if len(note_embedding) != MODEL_DIMENSIONS:
-            continue
-        similarity = cosine_similarity(query_embedding, note_embedding)
-        if similarity > 0.3:
-            results.append({'id': note.id, 'title': note.title, 'similarity': similarity})
+    matched_notes = []
+    for note in candidates:
+        keyword = keyword_scores.get(note.id, 0.0)
+        similarity = similarity_scores.get(note.id, 0.0)
+        if mode == "text":
+            if keyword <= 0:
+                continue
+            score = keyword
+        else:
+            if keyword <= 0 and similarity <= 0:
+                continue
+            score = (BLEND_KEYWORD * keyword) + (BLEND_SIMILARITY * similarity)
+        matched_notes.append(note)
+        results.append({
+            "id": note.id, "title": note.title, "score": round(score, 6),
+            "similarity": round(similarity, 6), "keyword": round(keyword, 6),
+            "matches": match_locations(note, q),
+            "excerpt": ' '.join((note.content or '').replace('\n', ' ').split())[:240],
+            **entry_payload(note),
+        })
 
-    results.sort(key=lambda item: item['similarity'], reverse=True)
-    return {'results': results[:limit], 'model': MODEL_NAME, 'dimensions': MODEL_DIMENSIONS}
+    results.sort(key=lambda item: (-item["score"], item["id"]))
+    return {
+        "results": results[:limit], "mode": mode, "total": len(results),
+        # Facets describe what actually matched, so no offered filter can lead to an empty list.
+        "filter_options": filter_options(matched_notes, projects_by_id),
+        "model": MODEL_NAME, "dimensions": MODEL_DIMENSIONS,
+    }
 
 @app.get("/api/notes/{note_id:path}/videos")
 def get_note_videos(note_id: str, db: Session = Depends(get_db)):
@@ -931,15 +1049,97 @@ class AIHistoryMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=8000)
 
+class ChatFilters(BaseModel):
+    from_date: Optional[date] = Field(default=None, alias="from")
+    to_date: Optional[date] = Field(default=None, alias="to")
+    space: Optional[Literal["work", "personal"]] = None
+    kind: Optional[Literal["note", "entry", "summary"]] = None
+    project_id: Optional[str] = None
+    client_id: Optional[str] = None
+
+    model_config = {"populate_by_name": True}
+
+
+class ChatScope(BaseModel):
+    note_ids: Optional[List[str]] = Field(default=None, max_length=MAX_SCOPE_NOTES)
+    folder_id: Optional[str] = None
+    tags: Optional[List[str]] = None
+    project_id: Optional[str] = None
+    client_id: Optional[str] = None
+    group_id: Optional[str] = None
+
+
 class AIChatRequest(BaseModel):
     query: str = Field(min_length=1, max_length=8000)
     current_note_id: Optional[str] = Field(default=None, max_length=256)
     conversation_history: List[AIHistoryMessage] = Field(default_factory=list, max_length=10)
+    filters: Optional[ChatFilters] = None
+    scope: Optional[ChatScope] = None
+    persona_id: Optional[str] = None
 
 class LinkSuggestionRequest(BaseModel):
     text: str = Field(min_length=1, max_length=16000)
     current_note_id: str = Field(min_length=1, max_length=256)
     num_suggestions: int = Field(default=5, ge=1, le=20)
+
+def resolve_chat_context(db: Session, request: AIChatRequest) -> dict:
+    """Work out which notes chat may read, and say so in the response.
+
+    Space defaults to work: personal entries join only when asked for explicitly or
+    hand-picked by id, where the choice was already deliberate (F2, F9).
+    """
+    filters = request.filters.model_dump() if request.filters else {}
+    scope = request.scope.model_dump(exclude_none=True) if request.scope else {}
+    hand_picked = bool(scope.get("note_ids"))
+
+    persona_instructions = None
+    persona = None
+    if request.persona_id:
+        persona = db.query(Persona).filter(Persona.id == request.persona_id).first()
+        if not persona:
+            raise HTTPException(status_code=404, detail="Persona not found")
+    elif not scope and not filters:
+        persona = db.query(Persona).filter(Persona.is_default == 1).first()
+    if persona:
+        persona_instructions = persona.instructions
+        for key, value in (persona.default_scope or {}).items():
+            # A persona may narrow what chat reads, never widen it.
+            if value and not filters.get(key) and not scope.get(key):
+                filters[key] = value
+
+    phrase_used = None
+    if not filters.get("from_date") and not filters.get("to_date"):
+        found = find_date_phrase(request.query, datetime.utcnow().date())
+        if found:
+            (filters["from_date"], filters["to_date"]), phrase_used = found
+
+    if not filters.get("space") and not hand_picked:
+        filters["space"] = "work"
+
+    scope_ids = resolve_scope(db, scope) if scope else None
+    allowed_note_ids = None
+    if scope_ids is not None or any(filters.get(key) for key in ("from_date", "to_date", "space", "kind", "project_id", "client_id")):
+        query = apply_filters(db.query(Note), {**filters, "note_ids": scope_ids})
+        allowed_note_ids = [note.id for note in query.all()]
+
+    return {
+        "allowed_note_ids": allowed_note_ids,
+        "persona_instructions": persona_instructions,
+        "applied": {
+            "filters": {
+                "from": filters["from_date"].isoformat() if filters.get("from_date") else None,
+                "to": filters["to_date"].isoformat() if filters.get("to_date") else None,
+                "space": filters.get("space"), "kind": filters.get("kind"),
+                "project_id": filters.get("project_id"), "client_id": filters.get("client_id"),
+            },
+            "date_phrase": phrase_used,
+            "scope": scope or None,
+            "scope_note_count": len(allowed_note_ids) if allowed_note_ids is not None else None,
+            "persona_id": persona.id if persona else None,
+            "hand_picked": hand_picked,
+        },
+    }
+
 
 @app.post("/api/ai/chat")
 async def ai_chat(request: AIChatRequest, db: Session = Depends(get_db)):
@@ -951,15 +1151,18 @@ async def ai_chat(request: AIChatRequest, db: Session = Depends(get_db)):
     if settings and not settings.ai_chat_enabled:
         raise HTTPException(status_code=403, detail="AI Chat is disabled in settings")
     
+    resolved = resolve_chat_context(db, request)
     ai_service = AIAssistService(db)
     
     try:
         result = await ai_service.answer_question(
             query=request.query,
             current_note_id=request.current_note_id,
-            conversation_history=[message.model_dump() for message in request.conversation_history]
+            conversation_history=[message.model_dump() for message in request.conversation_history],
+            allowed_note_ids=resolved["allowed_note_ids"],
+            persona_instructions=resolved["persona_instructions"],
         )
-        return result
+        return {**result, "applied": resolved["applied"]}
     except CodexProviderError as error:
         raise HTTPException(status_code=error.status_code, detail=error.code)
     except Exception:
@@ -2015,8 +2218,8 @@ def project_unlinked_entries(project_id: str, limit: int = 50, db: Session = Dep
 
 @app.get("/api/entries")
 def list_entries(
-    from_date: Optional[date] = Query(default=None, alias="from"),
-    to_date: Optional[date] = Query(default=None, alias="to"),
+    from_date: Annotated[Optional[date], Query(alias="from")] = None,
+    to_date: Annotated[Optional[date], Query(alias="to")] = None,
     space: Optional[Literal["work", "personal"]] = None,
     project_id: Optional[str] = None,
     client_id: Optional[str] = None,
@@ -2065,6 +2268,178 @@ def update_entry_assignment(entry_id: str, payload: AssignmentWrite, db: Session
     db.commit()
     db.refresh(note)
     return {**entry_row(note), "previous": previous}
+
+
+class NoteGroupWrite(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    mode: Literal["fixed", "live"] = "fixed"
+    definition: dict = Field(default_factory=dict)
+
+
+class PersonaWrite(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    instructions: str = Field(min_length=1, max_length=10000)
+    default_scope: Optional[dict] = None
+    is_default: bool = False
+
+
+class BulkAction(BaseModel):
+    note_ids: List[str] = Field(min_length=1, max_length=MAX_SCOPE_NOTES)
+    add_tags: Optional[List[str]] = None
+    project_id: Optional[str] = None
+    space: Optional[Literal["work", "personal"]] = None
+    group_id: Optional[str] = None
+
+
+def group_payload(group: NoteGroup) -> dict:
+    return {
+        "id": group.id, "name": group.name, "mode": group.mode, "definition": group.definition or {},
+        "created_at": group.created_at.isoformat() if group.created_at else None,
+    }
+
+
+def persona_payload(persona: Persona) -> dict:
+    return {
+        "id": persona.id, "name": persona.name, "instructions": persona.instructions,
+        "default_scope": persona.default_scope, "is_default": bool(persona.is_default),
+        "created_at": persona.created_at.isoformat() if persona.created_at else None,
+    }
+
+
+@app.get("/api/note-groups")
+def list_note_groups(db: Session = Depends(get_db)):
+    return [group_payload(group) for group in db.query(NoteGroup).order_by(NoteGroup.name).all()]
+
+
+@app.post("/api/note-groups")
+def create_note_group(payload: NoteGroupWrite, db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Group name is required")
+    if db.query(NoteGroup).filter(NoteGroup.name == name).first():
+        raise HTTPException(status_code=409, detail="Group name already exists")
+    group = NoteGroup(id=str(uuid.uuid4()), name=name, mode=payload.mode, definition=payload.definition, created_at=datetime.utcnow())
+    db.add(group)
+    db.commit()
+    db.refresh(group)
+    return group_payload(group)
+
+
+@app.put("/api/note-groups/{group_id}")
+def update_note_group(group_id: str, payload: NoteGroupWrite, db: Session = Depends(get_db)):
+    group = db.query(NoteGroup).filter(NoteGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Group name is required")
+    if db.query(NoteGroup).filter(NoteGroup.name == name, NoteGroup.id != group_id).first():
+        raise HTTPException(status_code=409, detail="Group name already exists")
+    group.name = name
+    group.mode = payload.mode
+    group.definition = payload.definition
+    db.commit()
+    db.refresh(group)
+    return group_payload(group)
+
+
+@app.delete("/api/note-groups/{group_id}")
+def delete_note_group(group_id: str, db: Session = Depends(get_db)):
+    group = db.query(NoteGroup).filter(NoteGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    db.delete(group)
+    db.commit()
+    return {"deleted": group_id}
+
+
+@app.get("/api/personas")
+def list_personas(db: Session = Depends(get_db)):
+    return [persona_payload(persona) for persona in db.query(Persona).order_by(Persona.name).all()]
+
+
+@app.post("/api/personas")
+def create_persona(payload: PersonaWrite, db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Persona name is required")
+    if db.query(Persona).filter(Persona.name == name).first():
+        raise HTTPException(status_code=409, detail="Persona name already exists")
+    if payload.is_default:
+        for existing in db.query(Persona).filter(Persona.is_default == 1).all():
+            existing.is_default = 0
+    persona = Persona(
+        id=str(uuid.uuid4()), name=name, instructions=payload.instructions,
+        default_scope=payload.default_scope, is_default=1 if payload.is_default else 0, created_at=datetime.utcnow(),
+    )
+    db.add(persona)
+    db.commit()
+    db.refresh(persona)
+    return persona_payload(persona)
+
+
+@app.put("/api/personas/{persona_id}")
+def update_persona(persona_id: str, payload: PersonaWrite, db: Session = Depends(get_db)):
+    persona = db.query(Persona).filter(Persona.id == persona_id).first()
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Persona name is required")
+    if db.query(Persona).filter(Persona.name == name, Persona.id != persona_id).first():
+        raise HTTPException(status_code=409, detail="Persona name already exists")
+    if payload.is_default:
+        for existing in db.query(Persona).filter(Persona.is_default == 1, Persona.id != persona_id).all():
+            existing.is_default = 0
+    persona.name = name
+    persona.instructions = payload.instructions
+    persona.default_scope = payload.default_scope
+    persona.is_default = 1 if payload.is_default else 0
+    db.commit()
+    db.refresh(persona)
+    return persona_payload(persona)
+
+
+@app.delete("/api/personas/{persona_id}")
+def delete_persona(persona_id: str, db: Session = Depends(get_db)):
+    persona = db.query(Persona).filter(Persona.id == persona_id).first()
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    db.delete(persona)
+    db.commit()
+    return {"deleted": persona_id}
+
+
+@app.post("/api/notes/bulk")
+def bulk_update_notes(payload: BulkAction, db: Session = Depends(get_db)):
+    """Tag, assign or group a chosen list of notes. Touches only the listed ids."""
+    notes = db.query(Note).filter(Note.id.in_(payload.note_ids)).all()
+    if not notes:
+        raise HTTPException(status_code=404, detail="No matching notes")
+    if payload.project_id:
+        resolve_project(db, payload.project_id)
+
+    for note in notes:
+        if payload.add_tags:
+            note.tags = sorted({*(note.tags or []), *[tag.strip() for tag in payload.add_tags if tag.strip()]})
+        if payload.project_id:
+            note.project_id = payload.project_id
+            note.assignment = "manual"
+        if payload.space:
+            note.space = payload.space
+        note.updated_at = datetime.utcnow()
+
+    if payload.group_id:
+        group = db.query(NoteGroup).filter(NoteGroup.id == payload.group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        if group.mode != "fixed":
+            raise HTTPException(status_code=400, detail="Only fixed groups accept notes")
+        existing = (group.definition or {}).get("note_ids", [])
+        group.definition = {**(group.definition or {}), "note_ids": sorted({*existing, *[note.id for note in notes]})}
+
+    db.commit()
+    return {"updated": [note.id for note in notes]}
 
 
 def run_export_job(context, job_id: str) -> None:

@@ -54,7 +54,7 @@ class DataSafetyTests(unittest.TestCase):
                 root / "migration-copy",
                 "123e4567-e89b-42d3-a456-426614174000",
             )
-            self.assertEqual(result["appliedMigrations"], [1, 2, 3, 4, 5, 6])
+            self.assertEqual(result["appliedMigrations"], [1, 2, 3, 4, 5, 6, 7])
             self.assertEqual(result["counts"]["notes"], 1)
             self.assertEqual(result["counts"]["folders"], 1)
             self.assertGreaterEqual(result["elapsedMs"], 0)

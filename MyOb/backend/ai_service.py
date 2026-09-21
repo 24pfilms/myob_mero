@@ -22,16 +22,20 @@ class AIAssistService:
         self, 
         query: str, 
         current_note_id: Optional[str] = None,
-        conversation_history: List[Dict] = None
+        conversation_history: List[Dict] = None,
+        allowed_note_ids: Optional[List[str]] = None,
+        persona_instructions: Optional[str] = None
     ) -> Dict:
         """
         Answer user question with context from vault
         Returns answer with citations
         """
-        # Step 1: Get relevant notes via semantic search
-        relevant_notes = self._semantic_search(query, limit=10)
+        # Step 1: Get relevant notes via semantic search, never leaving the allowed scope
+        relevant_notes = self._semantic_search(query, limit=10, allowed_note_ids=allowed_note_ids)
         
-        # Step 2: Build context window
+        # Step 2: Build context window. The open note counts only if it is in scope too.
+        if allowed_note_ids is not None and current_note_id not in set(allowed_note_ids):
+            current_note_id = None
         context = self._build_context(relevant_notes, current_note_id)
         
         # Step 3: Build conversation context
@@ -42,6 +46,8 @@ class AIAssistService:
         
         # Step 4: Add system prompt and user query
         system_prompt = self._build_system_prompt(context)
+        if persona_instructions:
+            system_prompt = f"{system_prompt}\n\nPERSONA INSTRUCTIONS:\n{persona_instructions}"
         messages.append({"role": "user", "content": query})
 
         # Step 5: Call LLM
@@ -90,12 +96,17 @@ class AIAssistService:
             "related_notes": []
         }
     
-    def _semantic_search(self, query: str, limit: int = 10) -> List[Dict]:
-        """Search notes by semantic similarity"""
+    def _semantic_search(self, query: str, limit: int = 10, allowed_note_ids: Optional[List[str]] = None) -> List[Dict]:
+        """Search notes by semantic similarity, restricted to the scope when one is set"""
         from ai import get_embedding
         
         query_embedding = get_embedding(query)
-        all_notes = self.db.query(Note).all()
+        note_query = self.db.query(Note)
+        if allowed_note_ids is not None:
+            if not allowed_note_ids:
+                return []
+            note_query = note_query.filter(Note.id.in_(allowed_note_ids))
+        all_notes = note_query.all()
         
         results = []
         for note in all_notes:

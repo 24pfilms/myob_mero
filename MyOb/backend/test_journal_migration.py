@@ -25,8 +25,8 @@ class JournalMigrationTests(unittest.TestCase):
             connection.executescript(fixture.read_text(encoding="utf-8"))
         finally:
             connection.close()
-        # Everything up to 005, so 006 applies on top of a populated database.
-        self.assertEqual(apply_migrations(self.database, legacy_owner=OWNER)[-1], 6)
+        # 006 and 007 apply on top of a populated database.
+        self.assertEqual(apply_migrations(self.database, legacy_owner=OWNER)[-1], 7)
 
     def test_existing_notes_are_unchanged_and_entry_defaults_land(self):
         connection = sqlite3.connect(self.database)

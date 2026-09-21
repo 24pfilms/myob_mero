@@ -16,6 +16,13 @@ export const MousePointerIcon = () => (
   </svg>
 );
 
+export const SearchIcon = () => (
+  <svg {...iconProps} viewBox="0 0 24 24">
+    <circle cx="11" cy="11" r="7"></circle>
+    <path d="m20 20-3.5-3.5"></path>
+  </svg>
+);
+
 export const JournalIcon = () => (
   <svg {...iconProps} viewBox="0 0 24 24">
     <path d="M4 4a2 2 0 0 1 2-2h12a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z"></path>

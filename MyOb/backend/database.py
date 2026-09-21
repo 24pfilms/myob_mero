@@ -97,6 +97,27 @@ class Job(TenantOwned, Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class NoteGroup(TenantOwned, Base):
+    __tablename__ = 'note_groups'
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    mode = Column(String, nullable=False, default='fixed')  # 'fixed' (note ids) or 'live' (filters)
+    definition = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Persona(TenantOwned, Base):
+    __tablename__ = 'personas'
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    instructions = Column(Text, nullable=False)
+    default_scope = Column(JSON, nullable=True)
+    is_default = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Folder(TenantOwned, Base):
     __tablename__ = 'folders'
     

@@ -162,6 +162,71 @@ export interface ExportJob {
   updated_at?: string | null;
 }
 
+export type SearchMode = 'ai' | 'text';
+
+export interface SearchOptions {
+  mode?: SearchMode;
+  limit?: number;
+  from?: string;
+  to?: string;
+  space?: JournalSpace;
+  kind?: 'note' | 'entry' | 'summary';
+  projectId?: string;
+  clientId?: string;
+  groupId?: string;
+}
+
+export interface SearchMatch {
+  field: 'title' | 'body';
+  line: number;
+  preview: string;
+}
+
+export interface SearchResult extends EntryFields {
+  id: string;
+  title: string;
+  score: number;
+  similarity: number;
+  keyword: number;
+  excerpt: string;
+  matches: SearchMatch[];
+}
+
+export interface FilterOption {
+  value: string;
+  count: number;
+  name?: string;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+  mode: SearchMode;
+  total: number;
+  filter_options: {
+    space: FilterOption[];
+    kind: FilterOption[];
+    project_id: FilterOption[];
+    client_id: FilterOption[];
+  };
+}
+
+export interface NoteGroup {
+  id: string;
+  name: string;
+  mode: 'fixed' | 'live';
+  definition: Record<string, unknown>;
+  created_at: string | null;
+}
+
+export interface Persona {
+  id: string;
+  name: string;
+  instructions: string;
+  default_scope: Record<string, unknown> | null;
+  is_default: boolean;
+  created_at: string | null;
+}
+
 export interface CredentialUnavailableError {
   error: 'AI_CREDENTIAL_UNAVAILABLE';
 }
@@ -213,6 +278,46 @@ class MyObApiService {
   semanticSearch(query: string, limit = 20) {
     const params = new URLSearchParams({ q: query, limit: String(limit) });
     return api.request<{ results: Array<NoteSummary & { similarity: number }> }>(`/myob/semantic-search?${params}`, { method: 'GET' });
+  }
+
+  search(query: string, options: SearchOptions = {}) {
+    const params = new URLSearchParams({ q: query, mode: options.mode ?? 'ai', limit: String(options.limit ?? 20) });
+    if (options.from) params.set('from', options.from);
+    if (options.to) params.set('to', options.to);
+    if (options.space) params.set('space', options.space);
+    if (options.kind) params.set('kind', options.kind);
+    if (options.projectId) params.set('project_id', options.projectId);
+    if (options.clientId) params.set('client_id', options.clientId);
+    if (options.groupId) params.set('group_id', options.groupId);
+    return api.request<SearchResponse>(`/myob/semantic-search?${params}`, { method: 'GET' });
+  }
+
+  bulkUpdateNotes(action: { note_ids: string[]; add_tags?: string[]; project_id?: string; space?: JournalSpace; group_id?: string }) {
+    return api.request<{ updated: string[] }>('/myob/notes/bulk', { method: 'POST', body: JSON.stringify(action) });
+  }
+
+  listNoteGroups() {
+    return api.request<NoteGroup[]>('/myob/note-groups', { method: 'GET' });
+  }
+
+  createNoteGroup(group: { name: string; mode?: 'fixed' | 'live'; definition?: Record<string, unknown> }) {
+    return api.request<NoteGroup>('/myob/note-groups', { method: 'POST', body: JSON.stringify({ mode: 'fixed', definition: {}, ...group }) });
+  }
+
+  deleteNoteGroup(groupId: string) {
+    return api.request<{ deleted: string }>(`/myob/note-groups/${encodeURIComponent(groupId)}`, { method: 'DELETE' });
+  }
+
+  listPersonas() {
+    return api.request<Persona[]>('/myob/personas', { method: 'GET' });
+  }
+
+  createPersona(persona: { name: string; instructions: string; default_scope?: Record<string, unknown> | null; is_default?: boolean }) {
+    return api.request<Persona>('/myob/personas', { method: 'POST', body: JSON.stringify(persona) });
+  }
+
+  deletePersona(personaId: string) {
+    return api.request<{ deleted: string }>(`/myob/personas/${encodeURIComponent(personaId)}`, { method: 'DELETE' });
   }
 
   similarNotes(noteId: string, limit = 5) {
