@@ -44,8 +44,17 @@ out by the new keys. **If you would rather use your own keys, replace that file*
 note that changing `API_KEY_ENCRYPTION_KEY` later makes any credential saved under the old
 key unreadable.
 
-Then **sign up** in the browser at `http://127.0.0.1:3001`. The journal lives behind the
-login, and the toolbar only appears once you are signed in.
+The browser opens straight onto the board at `http://127.0.0.1:3001`, signed in as a local
+`dev` account — no login screen while you are developing.
+
+That convenience is server-side and local-only: the backend refuses it unless it is
+explicitly running in development, so a built bundle cannot reach past the login. Nothing
+about ownership changes — it is a real sign-in with a real token, so the work/personal
+isolation in A6 is tested under the same rules it will ship with. To get the login screen
+back, drop `MERO_ALLOW_DEV_LOGIN` from `Mero/scripts/start-all.ps1`, or put
+`VITE_DEV_AUTO_LOGIN=false` in `Mero/.env.local`.
+
+**Before this becomes a commercial product, delete the `/auth/dev-login` route.**
 
 Do **not** start the backend by itself with `uv run python runner.py` — it fails closed
 with `MERO_SERVICE_TOKEN must be set to at least 32 characters`, because that token is

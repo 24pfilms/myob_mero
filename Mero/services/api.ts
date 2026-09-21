@@ -136,6 +136,14 @@ class ApiService {
     return this.request<ApiUser>('/auth/me', { method: 'GET' });
   }
 
+  /** Local development only. The server refuses this unless it is running in development. */
+  async devLogin() {
+    const res = await this.request<{ success: true; user: ApiUser; token: string }>('/auth/dev-login', { method: 'POST' });
+    this.setToken(res.token);
+    this.setUser(res.user);
+    return res.user;
+  }
+
   // API Key Management (secure server-side storage)
   async saveApiKey(apiKey: string) {
     return this.request<{ success: true; message: string }>('/auth/api-key', {

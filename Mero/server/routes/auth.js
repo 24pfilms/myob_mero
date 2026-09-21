@@ -29,6 +29,40 @@ function getAuthenticatedUser(req) {
     .get(req.user.userId, req.user.userUuid);
 }
 
+// Local development convenience: sign in as a single local account without the
+// login screen. Guarded on the server, where a built bundle cannot reach past it:
+// it is refused unless NODE_ENV is explicitly 'development', and it only ever
+// issues a token for one fixed local username. It creates no password, so there
+// is no dev credential to leak into a bundle or a commit.
+// Remove this route before the product is exposed to anyone but its author.
+const DEV_LOGIN_USERNAME = 'dev';
+
+function devLoginAllowed() {
+  return process.env.NODE_ENV === 'development' && process.env.MERO_ALLOW_DEV_LOGIN === 'true';
+}
+
+router.post('/dev-login', (req, res) => {
+  if (!devLoginAllowed()) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  try {
+    let user = db.prepare('SELECT id, user_uuid, username, email FROM users WHERE username = ?').get(DEV_LOGIN_USERNAME);
+    if (!user) {
+      // No usable password: the hash is random bytes nobody holds the input for,
+      // so this account cannot be signed into through /login.
+      const unusableHash = crypto.randomBytes(32).toString('hex');
+      const userUuid = crypto.randomUUID();
+      const info = db.prepare('INSERT INTO users (user_uuid, username, email, password_hash) VALUES (?, ?, ?, ?)')
+        .run(userUuid, DEV_LOGIN_USERNAME, null, unusableHash);
+      user = { id: info.lastInsertRowid, user_uuid: userUuid, username: DEV_LOGIN_USERNAME, email: null };
+    }
+    return res.json({ success: true, user: publicUser(user), token: signToken(user) });
+  } catch (err) {
+    console.error('Dev login failed:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.post('/register', async (req, res) => {
   try {
     const { username, email, password } = req.body || {};

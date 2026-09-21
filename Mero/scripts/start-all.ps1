@@ -92,6 +92,10 @@ try {
     $env:MYOB_HOST = '127.0.0.1'
     $env:MYOB_PORT = "$MyObPort"
     $env:PORT = "$ExpressPort"
+    # Single-user local development: skip the login screen. Drop both of these to
+    # restore the login wall (and before the app is exposed to anyone else).
+    $env:NODE_ENV = 'development'
+    $env:MERO_ALLOW_DEV_LOGIN = 'true'
     $env:CORS_ORIGIN = "http://127.0.0.1:$VitePort"
     $env:VITE_API_URL = "http://127.0.0.1:$ExpressPort/api"
 
@@ -115,4 +119,5 @@ try {
     Stop-Children
     Remove-Item Env:MYOB_SERVICE_TOKEN -ErrorAction SilentlyContinue
     Remove-Item Env:MERO_SERVICE_TOKEN -ErrorAction SilentlyContinue
+    Remove-Item Env:MERO_ALLOW_DEV_LOGIN -ErrorAction SilentlyContinue
 }

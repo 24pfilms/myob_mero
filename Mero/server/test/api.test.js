@@ -182,3 +182,38 @@ test('security configuration fails closed without secrets', () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /JWT_SIGNING_KEY must be set/);
 });
+
+test('dev login is refused unless the server is explicitly in development', async () => {
+  const app = createApp();
+  const previous = { env: process.env.NODE_ENV, allow: process.env.MERO_ALLOW_DEV_LOGIN };
+  const restore = () => {
+    if (previous.env === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previous.env;
+    if (previous.allow === undefined) delete process.env.MERO_ALLOW_DEV_LOGIN; else process.env.MERO_ALLOW_DEV_LOGIN = previous.allow;
+  };
+
+  try {
+    // Production, or development without the explicit opt-in, must not issue a token.
+    for (const [nodeEnv, allow] of [['production', 'true'], ['production', undefined], ['development', undefined], ['development', 'false'], [undefined, 'true']]) {
+      if (nodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = nodeEnv;
+      if (allow === undefined) delete process.env.MERO_ALLOW_DEV_LOGIN; else process.env.MERO_ALLOW_DEV_LOGIN = allow;
+
+      const refused = await request(app).post('/api/auth/dev-login').expect(404);
+      assert.equal(refused.body.token, undefined, `NODE_ENV=${nodeEnv} allow=${allow} must not return a token`);
+    }
+
+    process.env.NODE_ENV = 'development';
+    process.env.MERO_ALLOW_DEV_LOGIN = 'true';
+    const allowed = await request(app).post('/api/auth/dev-login').expect(200);
+    assert.equal(allowed.body.user.username, 'dev');
+    assert.ok(allowed.body.token);
+
+    // Repeating it reuses the same account rather than creating a second one.
+    const again = await request(app).post('/api/auth/dev-login').expect(200);
+    assert.equal(again.body.user.uuid, allowed.body.user.uuid);
+
+    // The dev account has no usable password, so it cannot be signed into directly.
+    await request(app).post('/api/auth/login').send({ username: 'dev', password: 'dev' }).expect(401);
+  } finally {
+    restore();
+  }
+});

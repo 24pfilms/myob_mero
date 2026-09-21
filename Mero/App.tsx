@@ -14,6 +14,7 @@ import { ImageToVideoModal } from './components/ImageToVideoModal';
 import { InlineMarkupPrompt } from './components/InlineMarkupPrompt';
 import { MouseFollower } from './components/MouseFollower';
 import { LoginModal } from './components/LoginModal';
+import { attemptDevAutoLogin, isDevAutoLoginEnabled } from './services/devAutoLogin';
 import { BackgroundTest } from './components/BackgroundTest';
 import { NoteFinderDrawer } from './components/NoteFinderDrawer';
 import { JournalPanel } from './components/JournalPanel';
@@ -62,6 +63,7 @@ function App() {
 
   const [authToken, setAuthToken] = useState<string | null>(() => api.getToken());
   const [authUser, setAuthUser] = useState<ApiUser | null>(() => api.getUser());
+  const [devAutoLoginState, setDevAutoLoginState] = useState<'pending' | 'done'>('pending');
   
   // Only initialize useBoard after database is ready
   // Use a conditional hook wrapper to avoid calling useBoard before database is ready
@@ -194,6 +196,22 @@ function App() {
       }
     };
     validate();
+  }, [authToken]);
+
+  // Local development: sign in to the real server so the login screen does not
+  // interrupt. Compiled out of production builds; see services/devAutoLogin.ts.
+  useEffect(() => {
+    if (authToken || !isDevAutoLoginEnabled()) return;
+    let cancelled = false;
+    attemptDevAutoLogin().then(user => {
+      if (cancelled) return;
+      if (user) {
+        setAuthToken(api.getToken());
+        setAuthUser(user);
+      }
+      setDevAutoLoginState('done');
+    });
+    return () => { cancelled = true; };
   }, [authToken]);
 
   const selectedItems = items.filter(item => selectedItemIds.has(item.id));
@@ -624,11 +642,14 @@ function App() {
     setAuthUser(null);
   };
 
-  // Show login modal if not logged in
+  // Show login modal if not logged in. In dev with VITE_DEV_AUTO_LOGIN=true this
+  // signs in to the real server first, so auth and tenant scoping stay unchanged.
   if (!authToken) {
     return (
       <div className="w-screen h-screen bg-gray-900">
-        <LoginModal onLogin={handleLogin} />
+        {isDevAutoLoginEnabled() && devAutoLoginState === 'pending'
+          ? <div className="flex h-full items-center justify-center text-gray-300">Signing in as the dev account...</div>
+          : <LoginModal onLogin={handleLogin} />}
       </div>
     );
   }
