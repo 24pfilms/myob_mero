@@ -16,6 +16,7 @@ import { MouseFollower } from './components/MouseFollower';
 import { LoginModal } from './components/LoginModal';
 import { BackgroundTest } from './components/BackgroundTest';
 import { NoteFinderDrawer } from './components/NoteFinderDrawer';
+import { JournalPanel } from './components/JournalPanel';
 import { RelatedNotesPanel } from './components/RelatedNotesPanel';
 import { useBoard } from './hooks/useBoard';
 import { useDatabase } from './hooks/useDatabase';
@@ -144,6 +145,7 @@ function App() {
   const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
   const [isObsidianVaultOpen, setIsObsidianVaultOpen] = useState(false);
   const [isNoteFinderOpen, setIsNoteFinderOpen] = useState(false);
+  const [isJournalOpen, setIsJournalOpen] = useState(false);
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [isBoardManagerOpen, setIsBoardManagerOpen] = useState(false);
   const [aiImageEditItem, setAiImageEditItem] = useState<any>(null);
@@ -654,6 +656,7 @@ function App() {
         onOpenAiAssistant={() => setIsAiAssistantOpen(true)}
         onOpenYouTubeModal={() => setIsYouTubeModalOpen(true)}
         onOpenNotes={() => setIsNoteFinderOpen(true)}
+        onOpenJournal={() => setIsJournalOpen(true)}
         onOpenObsidianVault={() => setIsObsidianVaultOpen(true)}
         onOpenBoardManager={() => setIsBoardManagerOpen(true)}
         onBackgroundColorChange={setCanvasBackgroundColor}
@@ -764,7 +767,13 @@ function App() {
           onOpen={note => { setActiveNoteId(note.id); setIsNoteFinderOpen(false); }}
         />
       )}
-      {selectedNote && !isNoteFinderOpen && <RelatedNotesPanel noteId={selectedNote.noteId} onPlace={placeRelatedNote} />}
+      {isJournalOpen && (
+        <JournalPanel
+          onClose={() => setIsJournalOpen(false)}
+          onOpen={note => { setActiveNoteId(note.id); setIsJournalOpen(false); }}
+        />
+      )}
+      {selectedNote && !isNoteFinderOpen && !isJournalOpen && <RelatedNotesPanel noteId={selectedNote.noteId} onPlace={placeRelatedNote} />}
       {contextMenu && (
         <ContextMenu
           data={contextMenu}

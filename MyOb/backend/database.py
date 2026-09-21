@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, Text, JSON, Index, DateTime, Integer, event
+from sqlalchemy import create_engine, Column, String, Text, JSON, Index, DateTime, Date, Integer, event
 from sqlalchemy.orm import Session as SQLAlchemySession, sessionmaker, declarative_base, with_loader_criteria
 from datetime import datetime
 from config import DB_CONNECTION_STRING, DB_PATH
@@ -25,6 +25,16 @@ class Note(TenantOwned, Base):
     embedding_error = Column(Text, nullable=True)
     current_version = Column(Integer, nullable=False, default=1)
     folder_id = Column(String, nullable=True)  # Reference to parent folder
+    kind = Column(String, nullable=False, default='note')  # 'note', 'entry' or 'summary'
+    entry_date = Column(Date, nullable=True)  # Local calendar date the entry belongs to
+    space = Column(String, nullable=False, default='work')  # 'work' or 'personal'
+    project_id = Column(String, nullable=True)
+    assignment = Column(String, nullable=False, default='manual')  # how space/project were set
+    source = Column(String, nullable=False, default='text')
+    word_count = Column(Integer, nullable=False, default=0)
+    extracted = Column(JSON, nullable=True)
+    period_type = Column(String, nullable=True)
+    period_start = Column(Date, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
@@ -44,7 +54,47 @@ class NoteVersion(TenantOwned, Base):
     content = Column(Text, nullable=False)
     tags = Column(JSON, nullable=True)
     folder_id = Column(String, nullable=True)
+    space = Column(String, nullable=True)
+    project_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Client(TenantOwned, Base):
+    __tablename__ = 'clients'
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    archived = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Project(TenantOwned, Base):
+    __tablename__ = 'projects'
+
+    id = Column(String, primary_key=True)
+    client_id = Column(String, nullable=True)
+    name = Column(String, nullable=False)
+    status = Column(String, nullable=False, default='active')  # 'active', 'paused' or 'done'
+    stale_after_days = Column(Integer, nullable=False, default=7)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Job(TenantOwned, Base):
+    __tablename__ = 'jobs'
+
+    id = Column(String, primary_key=True)
+    type = Column(String, nullable=False)
+    target_id = Column(String, nullable=True)
+    needs_signin = Column(Integer, nullable=False, default=0)
+    status = Column(String, nullable=False, default='pending')
+    attempts = Column(Integer, nullable=False, default=0)
+    error = Column(Text, nullable=True)
+    result = Column(JSON, nullable=True)
+    processed_count = Column(Integer, nullable=False, default=0)
+    total_count = Column(Integer, nullable=False, default=0)
+    run_after = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class Folder(TenantOwned, Base):

@@ -13,6 +13,7 @@
 **Last Updated:** December 25, 2025
 
 ### ✅ **Completed Features**
+- ✅ **NEW:** Journal layer — dated entries split by Work/Personal, project assignment with undo, and full markdown + CSV export
 - ✅ **NEW:** Interactive animated background with mouse-following glow effect
 - ✅ **NEW:** AI background removal with professional chroma key despill algorithm
 - ✅ **NEW:** Pen tool markup for AI image editing - draw on images to indicate areas to change
@@ -493,6 +494,14 @@ The launcher will:
 - **Responsive Design:** Works on different screen sizes
 - **Dark Theme:** Professional appearance
 
+### 📓 **Journal** (NEW!)
+- **Daily Entries:** Capture what happened against a calendar date, kept separate from durable notes
+- **Work / Personal Split:** Every entry carries a space, so the two sides of your life never mix in a view
+- **Clients & Projects:** Group entries under a project, and projects under a client
+- **Assignment Hints:** Naming an active project in an entry surfaces a one-click suggestion to link it — with undo
+- **Unlinked Review:** Per project, see entries that mention it by name but were never linked
+- **Full Export:** One zip of every note and entry as markdown with frontmatter, plus clients and projects as CSV
+
 ### 💾 **Data Management**
 - **IndexedDB Storage:** Efficient browser database for large files
 - **Image Persistence:** Store images as binary blobs (no localStorage limits)
@@ -516,6 +525,13 @@ The launcher will:
 3. **Zoom:** Scroll wheel to zoom in/out (works anywhere on canvas)
 4. **Pan:** Middle mouse button + drag, or left-click empty space + drag
 5. **Right-Click:** Access context menus for item-specific actions
+
+### 📓 **Journal**
+1. Click the **Journal** button in the toolbar
+2. Type what happened, pick the date, and choose **Work** or **Personal**
+3. Optionally pick a project, then **Save entry**
+4. If an entry mentions an active project by name, click the suggested chip to link it (**Undo** reverses it)
+5. Click **Export** to build a zip of every note, entry, client and project — progress is shown as it runs
 
 ### 🤖 **AI Assistant**
 1. **Open:** Click the robot icon in the toolbar

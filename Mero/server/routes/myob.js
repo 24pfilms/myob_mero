@@ -27,6 +27,18 @@ const ALLOWED = [
   ['GET', /^\/images\/[^/]+$/],
   ['PUT', /^\/images\/[^/]+\/(?:favorite|tags)$/],
   ['DELETE', /^\/images\/[^/]+$/],
+  ['GET', /^\/entries$/],
+  ['GET', /^\/entries\/[^/]+\/hints$/],
+  ['PUT', /^\/entries\/[^/]+\/assignment$/],
+  ['GET', /^\/clients$/],
+  ['POST', /^\/clients$/],
+  ['PUT', /^\/clients\/[^/]+$/],
+  ['GET', /^\/projects$/],
+  ['GET', /^\/projects\/[^/]+\/unlinked$/],
+  ['POST', /^\/projects$/],
+  ['PUT', /^\/projects\/[^/]+$/],
+  ['POST', /^\/exports$/],
+  ['GET', /^\/exports\/[^/]+$/],
 ];
 const AI_PATH = /^\/(?:ai\/|content\/|videos\/)/;
 

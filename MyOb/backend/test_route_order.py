@@ -32,6 +32,13 @@ class RouteOrderTests(unittest.TestCase):
         self.assertEqual(matched_endpoint("/api/notes/note-1/images"), "get_note_images")
         self.assertEqual(matched_endpoint("/api/folders/folder-1/notes"), "get_folder_notes")
         self.assertEqual(matched_endpoint("/api/notes/nested/path"), "get_note")
+        self.assertEqual(matched_endpoint("/api/entries"), "list_entries")
+        self.assertEqual(matched_endpoint("/api/entries/entry-1/hints"), "entry_hints")
+        self.assertEqual(matched_endpoint("/api/entries/entry-1/assignment", "PUT"), "update_entry_assignment")
+        self.assertEqual(matched_endpoint("/api/projects"), "list_projects")
+        self.assertEqual(matched_endpoint("/api/projects/project-1/unlinked"), "project_unlinked_entries")
+        self.assertEqual(matched_endpoint("/api/clients"), "list_clients")
+        self.assertEqual(matched_endpoint("/api/exports/job-1"), "get_export")
         self.assertEqual(matched_endpoint("/api/folders/nested/path"), "get_folder")
 
     def test_note_get_catch_all_remains_after_every_declared_nested_note_get(self):

@@ -16,6 +16,15 @@ export const MousePointerIcon = () => (
   </svg>
 );
 
+export const JournalIcon = () => (
+  <svg {...iconProps} viewBox="0 0 24 24">
+    <path d="M4 4a2 2 0 0 1 2-2h12a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z"></path>
+    <path d="M4 18h15"></path>
+    <path d="M8 7h7"></path>
+    <path d="M8 11h7"></path>
+  </svg>
+);
+
 export const StickyNoteIcon = () => (
   <svg {...iconProps} viewBox="0 0 24 24">
     <path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8l-7-5z"></path>

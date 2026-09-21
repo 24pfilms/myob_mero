@@ -41,6 +41,9 @@ A modern, AI-powered note-taking application with semantic search, YouTube video
 -   **🤖 AI Integration**: Uses OpenRouter API with Claude Sonnet for embeddings and summaries
 -   **⚡ High Performance**: Indexed queries, 50k+ reads/sec, handles millions of notes
 -   **🔄 Full CRUD**: Create, read, update, and delete notes via REST API
+-   **📓 Journal Layer**: Dated entries with a Work/Personal space, assignable to clients and projects
+-   **🔎 Assignment Hints**: Plain-text matching surfaces active project names mentioned in an entry — no AI call, no cost
+-   **📦 Background Exports**: Export runs as a tracked job so large vaults never block or time out the request
 
 ### ✅ Database & Import/Export
 -   **📊 Migrated Data**: Successfully migrated 103+ notes with full embeddings
@@ -50,6 +53,25 @@ A modern, AI-powered note-taking application with semantic search, YouTube video
 -   **📥 File Import**: Import .md, .txt, and images via modal or sidebar drag-and-drop
 -   **🖼️ Image Embedding**: Images converted to base64 and embedded directly in notes
 -   **🔄 No Lock-in**: Your notes remain in portable markdown format
+-   **🗃️ Journal Tables**: `clients`, `projects` and `jobs`, all scoped per owner like every other table
+-   **📁 Journal Export**: One zip — `work/` and `personal/` markdown trees with YAML frontmatter, plus `tables/clients.csv` and `tables/projects.csv`
+
+### 📓 Journal API
+
+All routes are tenant-scoped and reached through the Mero proxy at `/api/myob/...`:
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/entries` | List entries, filtered by date range, space, project, client or assignment |
+| `GET` | `/api/entries/{id}/hints` | Active client/project names mentioned in the entry body |
+| `PUT` | `/api/entries/{id}/assignment` | Set space and project; returns the previous values so the UI can undo |
+| `GET` `POST` `PUT` | `/api/clients` | List, create and rename clients (archive via `archived`) |
+| `GET` `POST` `PUT` | `/api/projects` | List, create and update projects and their status |
+| `GET` | `/api/projects/{id}/unlinked` | Entries naming this project but not linked to it |
+| `POST` | `/api/exports` | Queue a full export; returns a job id immediately |
+| `GET` | `/api/exports/{id}` | Export job status and progress |
+
+Entries are notes with `kind='entry'`, so every existing note endpoint, version history and search path keeps working unchanged. Migration `006_journal_entries.sql` adds the columns and tables; existing notes default to `kind='note'`, `space='work'` and are left byte-identical.
 
 ## 🚀 Quick Start
 

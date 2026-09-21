@@ -110,12 +110,12 @@ def export_notes(owner_id, output_dir=None):
                 frontmatter_lines.append(f'updated: "{note.updated_at.isoformat()}"')
             
             frontmatter_lines.append("---")
-            frontmatter = "\\n".join(frontmatter_lines)
+            frontmatter = "\n".join(frontmatter_lines)
             
             # Write file
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(frontmatter)
-                f.write("\\n\\n")
+                f.write("\n\n")
                 f.write(note.content)
             
             print(f"[{i}/{total_notes}] ✓ {note.title[:50]}")

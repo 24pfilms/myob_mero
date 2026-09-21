@@ -16,6 +16,7 @@
 **/uploads/
 **/attachments/
 **/backups/
+**/exports/
 **/data/models/
 
 # Secrets and local configuration

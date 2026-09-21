@@ -60,6 +60,40 @@ test('route allowlist excludes host filesystem and arbitrary upstream paths', ()
   assert.equal(allowed('GET', '//example.com/steal'), false);
 });
 
+test('journal routes are allowed only in their exact shapes', () => {
+  for (const [method, route] of [
+    ['GET', '/entries'],
+    ['GET', '/entries/entry-1/hints'],
+    ['PUT', '/entries/entry-1/assignment'],
+    ['GET', '/clients'],
+    ['POST', '/clients'],
+    ['PUT', '/clients/client-1'],
+    ['GET', '/projects'],
+    ['GET', '/projects/project-1/unlinked'],
+    ['POST', '/projects'],
+    ['PUT', '/projects/project-1'],
+    ['POST', '/exports'],
+    ['GET', '/exports/job-1'],
+  ]) {
+    assert.equal(allowed(method, route), true, `${method} ${route} should be allowed`);
+  }
+
+  for (const [method, route] of [
+    ['GET', '/entries/../notes'],
+    ['GET', '/entries/entry-1'],
+    ['PUT', '/entries/a/b/assignment'],
+    ['DELETE', '/entries/entry-1/assignment'],
+    ['GET', '/projects/x/y'],
+    ['DELETE', '/projects/project-1'],
+    ['GET', '/exports'],
+    ['POST', '/exports/job-1'],
+    ['PUT', '/clients/client-1/archive'],
+    ['GET', '/clients/client-1'],
+  ]) {
+    assert.equal(allowed(method, route), false, `${method} ${route} should be refused`);
+  }
+});
+
 test('proxy configuration fails closed when the internal token is missing', () => {
   const result = spawnSync(process.execPath, ['-e', "require('./services/myobProxy')"], {
     cwd: path.resolve(__dirname, '..'),

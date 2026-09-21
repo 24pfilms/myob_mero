@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form
+from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -8,13 +8,14 @@ import json
 import os
 import frontmatter
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 import threading
 import re
 
 # Local imports
-from database import get_db, Note, NoteVersion, Attachment, VideoSummary, Folder, ImportJob, AISettings, EmbeddingJob, GeneratedImage, ImageCollection, ImageCollectionMembership
+from database import get_db, Note, NoteVersion, Attachment, VideoSummary, Folder, ImportJob, AISettings, EmbeddingJob, GeneratedImage, ImageCollection, ImageCollectionMembership, Client, Project, Job
+from journal import body_word_count, name_hints
 from ai import get_embedding, cosine_similarity
 from local_embeddings import MODEL_DIMENSIONS, MODEL_NAME
 from youtube import find_youtube_videos, process_video
@@ -45,8 +46,31 @@ def record_note_version(db: Session, note: Note) -> None:
     db.add(NoteVersion(
         id=str(uuid.uuid4()), note_id=note.id, version=note.current_version or 1,
         title=note.title, content=note.content, tags=list(note.tags or []),
-        folder_id=note.folder_id, created_at=datetime.utcnow(),
+        folder_id=note.folder_id, space=note.space, project_id=note.project_id,
+        created_at=datetime.utcnow(),
     ))
+
+
+def entry_payload(note: Note) -> dict:
+    """Journal fields shared by every note response."""
+    return {
+        "kind": note.kind,
+        "entry_date": note.entry_date.isoformat() if note.entry_date else None,
+        "space": note.space,
+        "project_id": note.project_id,
+        "assignment": note.assignment,
+        "source": note.source,
+        "word_count": note.word_count,
+    }
+
+
+def resolve_project(db: Session, project_id: Optional[str]) -> Optional[str]:
+    """Reject a project id that is not this tenant's."""
+    if project_id is None:
+        return None
+    if not db.query(Project).filter(Project.id == project_id).first():
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project_id
 
 
 def embedding_fields(title: str, content: str) -> dict:
@@ -100,6 +124,7 @@ def get_notes(q: Optional[str] = None, folder_id: Optional[str] = None, tag: Opt
         'id': note.id, 'title': note.title, 'tags': note.tags or [], 'folder_id': note.folder_id,
         'excerpt': ' '.join((note.content or '').replace('\n', ' ').split())[:240],
         'embedding_status': note.embedding_status,
+        **entry_payload(note),
         'created_at': note.created_at.isoformat() if note.created_at else None,
         'modified_at': note.updated_at.isoformat() if note.updated_at else None,
     } for note in notes]
@@ -276,6 +301,11 @@ class NoteCreate(BaseModel):
     content: str
     tags: Optional[List[str]] = []
     folder_id: Optional[str] = None
+    kind: Literal["note", "entry", "summary"] = "note"
+    entry_date: Optional[date] = None
+    space: Literal["work", "personal"] = "work"
+    project_id: Optional[str] = None
+    source: Literal["text", "voice", "import"] = "text"
 
 class NoteUpdate(BaseModel):
     title: Optional[str] = None
@@ -283,6 +313,11 @@ class NoteUpdate(BaseModel):
     tags: Optional[List[str]] = None
     folder_id: Optional[str] = None
     version: Optional[int] = None
+    kind: Optional[Literal["note", "entry", "summary"]] = None
+    entry_date: Optional[date] = None
+    space: Optional[Literal["work", "personal"]] = None
+    project_id: Optional[str] = None
+    source: Optional[Literal["text", "voice", "import"]] = None
 
 @app.post("/api/notes")
 def create_note(note_data: NoteCreate, db: Session = Depends(get_db)):
@@ -291,6 +326,9 @@ def create_note(note_data: NoteCreate, db: Session = Depends(get_db)):
     note_id = str(uuid.uuid4())
     
     embedding = embedding_fields(note_data.title, note_data.content)
+    entry_date = note_data.entry_date if note_data.kind == "entry" else None
+    if note_data.kind == "entry" and entry_date is None:
+        entry_date = datetime.utcnow().date()
 
     # Create new note
     new_note = Note(
@@ -300,6 +338,13 @@ def create_note(note_data: NoteCreate, db: Session = Depends(get_db)):
         content=note_data.content,
         tags=note_data.tags or [],
         folder_id=note_data.folder_id,
+        kind=note_data.kind,
+        entry_date=entry_date,
+        space=note_data.space,
+        project_id=resolve_project(db, note_data.project_id),
+        assignment="manual" if note_data.project_id or note_data.kind != "entry" else "unassigned",
+        source=note_data.source,
+        word_count=body_word_count(note_data.content),
         **embedding,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
@@ -318,6 +363,7 @@ def create_note(note_data: NoteCreate, db: Session = Depends(get_db)):
         "folder_id": new_note.folder_id,
         "embedding_status": new_note.embedding_status,
         "version": new_note.current_version,
+        **entry_payload(new_note),
         "created_at": new_note.created_at.isoformat() if new_note.created_at else None,
         "updated_at": new_note.updated_at.isoformat() if new_note.updated_at else None
     }
@@ -350,7 +396,22 @@ def update_note(note_id: str, note_data: NoteUpdate, db: Session = Depends(get_d
     
     if note_data.folder_id is not None:
         note.folder_id = note_data.folder_id
-    
+
+    if note_data.kind is not None:
+        note.kind = note_data.kind
+    if note_data.entry_date is not None:
+        note.entry_date = note_data.entry_date
+    if note_data.space is not None:
+        note.space = note_data.space
+    if note_data.project_id is not None:
+        note.project_id = resolve_project(db, note_data.project_id)
+        note.assignment = "manual"
+    if note_data.source is not None:
+        note.source = note_data.source
+    if note.kind == "entry" and note.entry_date is None:
+        note.entry_date = datetime.utcnow().date()
+    note.word_count = body_word_count(note.content)
+
     note.updated_at = datetime.utcnow()
     note.current_version += 1
     record_note_version(db, note)
@@ -415,6 +476,7 @@ def update_note(note_id: str, note_data: NoteUpdate, db: Session = Depends(get_d
         "folder_id": note.folder_id,
         "embedding_status": note.embedding_status,
         "version": note.current_version,
+        **entry_payload(note),
         "created_at": note.created_at.isoformat() if note.created_at else None,
         "updated_at": note.updated_at.isoformat() if note.updated_at else None
     }
@@ -1799,6 +1861,276 @@ def get_embedding_job(job_id: str, db: Session = Depends(get_db)):
     }
 
 
+# ============================================================================
+# JOURNAL: CLIENTS, PROJECTS AND ENTRIES
+# Declared above the notes catch-all so nested routes resolve first.
+# ============================================================================
+
+class ClientWrite(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    archived: Optional[bool] = None
+
+
+class ProjectWrite(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    client_id: Optional[str] = None
+    status: Literal["active", "paused", "done"] = "active"
+    stale_after_days: int = Field(default=7, ge=1, le=365)
+
+
+class AssignmentWrite(BaseModel):
+    space: Literal["work", "personal"]
+    project_id: Optional[str] = None
+
+
+def client_payload(client: Client) -> dict:
+    return {"id": client.id, "name": client.name, "archived": bool(client.archived), "created_at": client.created_at.isoformat() if client.created_at else None}
+
+
+def project_payload(project: Project) -> dict:
+    return {
+        "id": project.id, "name": project.name, "client_id": project.client_id, "status": project.status,
+        "stale_after_days": project.stale_after_days,
+        "created_at": project.created_at.isoformat() if project.created_at else None,
+    }
+
+
+def entry_row(note: Note) -> dict:
+    return {
+        "id": note.id, "title": note.title, "content": note.content,
+        "excerpt": ' '.join((note.content or '').replace('\n', ' ').split())[:240],
+        **entry_payload(note),
+        "created_at": note.created_at.isoformat() if note.created_at else None,
+        "updated_at": note.updated_at.isoformat() if note.updated_at else None,
+    }
+
+
+@app.get("/api/clients")
+def list_clients(include_archived: bool = False, db: Session = Depends(get_db)):
+    query = db.query(Client)
+    if not include_archived:
+        query = query.filter(Client.archived == 0)
+    return [client_payload(client) for client in query.order_by(Client.name).all()]
+
+
+@app.post("/api/clients")
+def create_client(payload: ClientWrite, db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Client name is required")
+    if db.query(Client).filter(Client.name == name).first():
+        raise HTTPException(status_code=409, detail="Client name already exists")
+    client = Client(id=str(uuid.uuid4()), name=name, archived=0, created_at=datetime.utcnow())
+    db.add(client)
+    db.commit()
+    db.refresh(client)
+    return client_payload(client)
+
+
+@app.put("/api/clients/{client_id}")
+def update_client(client_id: str, payload: ClientWrite, db: Session = Depends(get_db)):
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Client name is required")
+    if db.query(Client).filter(Client.name == name, Client.id != client_id).first():
+        raise HTTPException(status_code=409, detail="Client name already exists")
+    client.name = name
+    if payload.archived is not None:
+        client.archived = 1 if payload.archived else 0
+    db.commit()
+    db.refresh(client)
+    return client_payload(client)
+
+
+@app.get("/api/projects")
+def list_projects(status: Optional[Literal["active", "paused", "done"]] = None, client_id: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(Project)
+    if status:
+        query = query.filter(Project.status == status)
+    if client_id:
+        query = query.filter(Project.client_id == client_id)
+    return [project_payload(project) for project in query.order_by(Project.name).all()]
+
+
+@app.post("/api/projects")
+def create_project(payload: ProjectWrite, db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Project name is required")
+    if payload.client_id and not db.query(Client).filter(Client.id == payload.client_id).first():
+        raise HTTPException(status_code=404, detail="Client not found")
+    if db.query(Project).filter(Project.name == name).first():
+        raise HTTPException(status_code=409, detail="Project name already exists")
+    project = Project(
+        id=str(uuid.uuid4()), name=name, client_id=payload.client_id, status=payload.status,
+        stale_after_days=payload.stale_after_days, created_at=datetime.utcnow(),
+    )
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+    return project_payload(project)
+
+
+@app.put("/api/projects/{project_id}")
+def update_project(project_id: str, payload: ProjectWrite, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Project name is required")
+    if payload.client_id and not db.query(Client).filter(Client.id == payload.client_id).first():
+        raise HTTPException(status_code=404, detail="Client not found")
+    if db.query(Project).filter(Project.name == name, Project.id != project_id).first():
+        raise HTTPException(status_code=409, detail="Project name already exists")
+    project.name = name
+    project.client_id = payload.client_id
+    project.status = payload.status
+    project.stale_after_days = payload.stale_after_days
+    db.commit()
+    db.refresh(project)
+    return project_payload(project)
+
+
+@app.get("/api/projects/{project_id}/unlinked")
+def project_unlinked_entries(project_id: str, limit: int = 50, db: Session = Depends(get_db)):
+    """Entries naming this project in their text but not linked to it."""
+    if not 1 <= limit <= 200:
+        raise HTTPException(status_code=400, detail="Limit must be between 1 and 200")
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    results = []
+    for note in db.query(Note).filter(Note.kind == "entry", or_(Note.project_id.is_(None), Note.project_id != project_id)).order_by(Note.entry_date.desc()).all():
+        match = next((hint for hint in name_hints(db, note) if hint["kind"] == "project" and hint["id"] == project_id), None)
+        if match:
+            results.append({**entry_row(note), "preview": match["preview"]})
+        if len(results) >= limit:
+            break
+    return results
+
+
+@app.get("/api/entries")
+def list_entries(
+    from_date: Optional[date] = Query(default=None, alias="from"),
+    to_date: Optional[date] = Query(default=None, alias="to"),
+    space: Optional[Literal["work", "personal"]] = None,
+    project_id: Optional[str] = None,
+    client_id: Optional[str] = None,
+    assignment: Optional[Literal["manual", "rule", "ai", "unassigned"]] = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    if not 1 <= limit <= 500:
+        raise HTTPException(status_code=400, detail="Limit must be between 1 and 500")
+    query = db.query(Note).filter(Note.kind == "entry")
+    if from_date:
+        query = query.filter(Note.entry_date >= from_date)
+    if to_date:
+        query = query.filter(Note.entry_date <= to_date)
+    if space:
+        query = query.filter(Note.space == space)
+    if project_id:
+        query = query.filter(Note.project_id == project_id)
+    if client_id:
+        query = query.join(Project, (Project.id == Note.project_id) & (Project.owner_id == Note.owner_id)).filter(Project.client_id == client_id)
+    if assignment:
+        query = query.filter(Note.assignment == assignment)
+    entries = query.order_by(Note.entry_date.desc(), Note.created_at.desc()).limit(limit).all()
+    return [entry_row(note) for note in entries]
+
+
+@app.get("/api/entries/{entry_id}/hints")
+def entry_hints(entry_id: str, db: Session = Depends(get_db)):
+    note = db.query(Note).filter(Note.id == entry_id).first()
+    if not note:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    return {"entry_id": note.id, "hints": name_hints(db, note)}
+
+
+@app.put("/api/entries/{entry_id}/assignment")
+def update_entry_assignment(entry_id: str, payload: AssignmentWrite, db: Session = Depends(get_db)):
+    """Assign space and project; the response carries the previous values so the client can undo."""
+    note = db.query(Note).filter(Note.id == entry_id).first()
+    if not note:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    previous = {"space": note.space, "project_id": note.project_id, "assignment": note.assignment}
+    note.space = payload.space
+    note.project_id = resolve_project(db, payload.project_id)
+    note.assignment = "manual"
+    note.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(note)
+    return {**entry_row(note), "previous": previous}
+
+
+def run_export_job(context, job_id: str) -> None:
+    """Build the export zip off the request thread, tracking progress on the job row."""
+    from database import SessionLocal
+    from journal_export import export_archive
+
+    def worker():
+        session = SessionLocal()
+        try:
+            job = session.query(Job).filter(Job.id == job_id).first()
+            if not job:
+                return
+            job.status = "running"
+            job.attempts += 1
+            job.updated_at = datetime.utcnow()
+            session.commit()
+
+            def progress(processed: int, total: int) -> None:
+                job.processed_count = processed
+                job.total_count = total
+                job.updated_at = datetime.utcnow()
+                session.commit()
+
+            archive_path = export_archive(session, progress=progress)
+            job.status = "done"
+            job.result = {"path": str(archive_path), "bytes": archive_path.stat().st_size}
+            job.updated_at = datetime.utcnow()
+            session.commit()
+        except Exception as error:
+            session.rollback()
+            failed = session.query(Job).filter(Job.id == job_id).first()
+            if failed:
+                failed.status = "failed"
+                failed.error = type(error).__name__
+                failed.updated_at = datetime.utcnow()
+                session.commit()
+        finally:
+            session.close()
+
+    run_with_request_context(context, worker)
+
+
+@app.post("/api/exports")
+def start_export(db: Session = Depends(get_db)):
+    """Queue a full export; returns immediately so the proxy never waits on the zip."""
+    job = Job(id=str(uuid.uuid4()), type="export", status="pending", created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    threading.Thread(target=run_export_job, args=(get_request_context(), job.id), daemon=True).start()
+    return {"id": job.id, "status": job.status, "processed_count": 0, "total_count": 0}
+
+
+@app.get("/api/exports/{job_id}")
+def get_export(job_id: str, db: Session = Depends(get_db)):
+    job = db.query(Job).filter(Job.id == job_id, Job.type == "export").first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Export not found")
+    return {
+        "id": job.id, "status": job.status, "processed_count": job.processed_count, "total_count": job.total_count,
+        "error": job.error, "path": (job.result or {}).get("path"),
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+    }
+
+
 # Keep the path catch-all last so nested note routes resolve first.
 @app.get("/api/notes/{note_id:path}")
 def get_note(note_id: str, raw: bool = False, db: Session = Depends(get_db)):
@@ -1823,5 +2155,6 @@ def get_note(note_id: str, raw: bool = False, db: Session = Depends(get_db)):
         "id": note.id, "title": note.title, "content": note.content if raw else content_with_frontmatter, "tags": note.tags,
         "folder_id": note.folder_id, "version": note.current_version, "embedding_status": note.embedding_status,
         "embedding_model": note.embedding_model, "embedding_dimensions": note.embedding_dimensions,
+        **entry_payload(note),
         "updated_at": note.updated_at.isoformat() if note.updated_at else None,
     }
