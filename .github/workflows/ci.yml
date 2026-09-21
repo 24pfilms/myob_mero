@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 15
     steps:
       # Majors verified against the official action documentation on 2026-08-28.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
